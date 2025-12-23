@@ -1,0 +1,152 @@
+use librarySystem
+select * from Book
+select * from Staff
+
+-- 1. Display library ID, name, and the name of the manager. 
+select * from Book
+SELECT 
+    l.library_ID,
+    l.library_name,
+    s.staff_FullName AS Manager_Name
+FROM library1 l
+JOIN Staff s
+    ON l.library_ID = s.library_ID
+WHERE s.staff_position = 'Head Librarian'
+
+-- 2. Display library names and the books available in each one. 
+select  
+l.library_name,b.Book_title
+from library1 l
+join Book b
+on l.library_ID = b.library_ID
+
+-- 3. Display all member data along with their loan history. 
+select
+m.*,l.*
+from Members m
+join loan l
+ON m.Members_ID = l.Members_ID
+
+-- 4. Display all books located in 'Zamalek' or 'Downtown'. 
+select 
+b.Book_title,
+l.library_location
+from Book b
+join library1 l
+on b.library_ID = l.library_ID
+where l.library_location in ( 'Muscat' , 'Sohar')
+
+-- 5. Display all books whose titles start with 'T'. 
+select 
+b.Book_title
+from Book b
+join Book s
+on b.Book_ID = s.Book_ID
+where b.Book_title LIKE 'T%'
+--OR
+SELECT 
+    Book_title
+FROM Book
+WHERE Book_title LIKE 'T%'
+
+-- 6. List members who borrowed books priced between 100 and 300 LE. 
+SELECT
+m.Members_FullName,
+b.Book_price
+FROM Members m
+JOIN loan l
+ON m.Members_ID = l.Members_ID
+JOIN Book b
+ON b.Book_ID = l.Book_ID
+where b.Book_price between 10 and 30
+
+-- 7. Retrieve members who borrowed and returned books titled 'The Alchemist'. 
+select * from loan
+select * from Book
+SELECT 
+    m.Members_ID,
+    m.Members_FullName,
+    m.Members_email,
+    l.loan_id,
+    l.loan_date,
+    l.return_date,
+	l.Loan_Status
+FROM Members m
+JOIN Loan l
+    ON m.Members_ID = l.Members_ID
+JOIN Book b
+    ON l.Book_ID = b.Book_ID
+WHERE b.Book_title = 'The Hunger Games'
+  AND l.return_date IS NOT NULL
+
+  -- 8. Find all members assisted by librarian "Sarah Fathy". 
+  select * from Staff
+  select
+  m.Members_FullName,
+  s.staff_FullName
+FROM Staff s
+JOIN library1 l
+    ON s.library_ID = l.library_ID
+JOIN Book b
+    ON l.library_ID = b.library_ID
+JOIN Loan lo
+    ON b.Book_ID = lo.Book_ID
+JOIN Members m
+    ON lo.Members_ID = m.Members_ID
+WHERE s.staff_FullName = 'Nasser Al-Balushi'
+
+-- 9. Display each member’s name and the books they borrowed, ordered by book title. 
+select 
+  m.Members_FullName,
+  b.Book_title
+  from Members m
+  join loan l
+   ON m.Members_ID = l.Members_ID
+   join Book b
+   on b.Book_ID = l.Book_ID
+   order by b.Book_title
+
+  -- 10. For each book located in 'Cairo Branch', show title, library name, manager, and shelf info. 
+  select * from library1
+  select * from Staff
+  select 
+  l.library_name,
+  s.staff_position,
+  l.library_location,
+  b.Book_title,
+     b.Shelf_Location
+  from library1 l
+  join staff s
+   ON l.library_ID = s.library_ID
+   join Book b
+  ON l.library_ID = b.library_ID
+  where   s.staff_position like 'Head Librarian' -- Head Librarian = manager
+  and   l.library_location like 'Muscat'
+
+  -- 11. Display all staff members who manage libraries. 
+    select * from Staff
+	select * from Members
+select
+m.Members_FullName,
+ s.staff_FullName,
+ s.staff_position
+	from staff s
+	join library1 l
+	on l.library_ID = s.library_ID
+	join Book b
+	on l.library_ID = b.library_ID
+	join loan lo
+	on b.Book_ID = lo.Book_ID
+	join Members m
+	on lo.Members_ID = m.Members_ID
+	where  s.staff_position like 'Head Librarian' -- Head Librarian = manager
+
+	-- 12. Display all members and their reviews, even if some didn’t submit any review yet. 
+	select * from Members
+	select * from review
+	select 
+	m.Members_FullName,
+	r.review_comments
+	from Members m
+	left join review r
+	on m.Members_ID = r.Members_ID
