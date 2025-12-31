@@ -1,4 +1,4 @@
-use librarySystem
+﻿use librarySystem
 select * from Book -- DO MORE INSERT AS PROJECT PART 2 NEED
 INSERT INTO Book 
 (Book_ISBN, Book_title, Book_price, Book_IsAvailable, Book_Genre, Shelf_Location, library_ID)
@@ -239,8 +239,257 @@ on l.loan_id = p.loan_id
 group by b.Book_Genre
 
 -- Section 2: Aggregate Functions and Grouping
+
 -- 8. Monthly Loan Statistics
 -- Generate a report showing the number of loans issued per month for the current year.
 --Include month name, total loans, total returned, and total still issued/overdue
-select
 
+SELECT
+    DATENAME(month, loan_date) AS Month_Name,
+    COUNT(loan_id) AS Total_Loans,
+    SUM(CASE WHEN Loan_Status = 'Returned' THEN 1 ELSE 0 END) AS Total_Returned,
+    SUM(CASE WHEN Loan_Status IN ('Issued', 'Overdue') THEN 1 ELSE 0 END) AS Still_Issued_Or_Overdue
+FROM loan
+WHERE YEAR(loan_date) = YEAR(GETDATE()) -- to show the loan in current year
+GROUP BY DATENAME(month, loan_date)
+
+-- 9. Member Engagement Metrics 
+--For each member, calculate: total books borrowed, total books currently on loan, total 
+--fines paid, and average rating they give in reviews. Only include members who have 
+--borrowed at least one book. 
+
+
+SELECT
+    m.Members_FullName,
+    COUNT(l.loan_id) AS Total_Books_Borrowed,
+    SUM(CASE WHEN l.Loan_Status IN ('Issued', 'Overdue') THEN 1  ELSE 0 END) AS Total_Books_Currently_On_Loan,
+    SUM(ISNULL(p.amount, 0)) AS Total_Fines_Paid,
+    AVG(CAST(r.review_rate AS FLOAT)) AS Average_Rating -- CAST is used to convert INT to FLOAT for accurate average calculation
+FROM Members m
+JOIN Loan l
+    ON m.Members_ID = l.Members_ID
+LEFT JOIN Payment p -- to show all members who has fine or not
+    ON l.loan_id = p.loan_id
+ left JOIN Review r -- to show all members who has review or not
+    ON m.Members_ID = r.Members_ID
+GROUP BY m.Members_FullName
+HAVING COUNT(l.loan_id) >= 1
+
+--10. Library Performance Comparison 
+--Compare libraries by showing: library name, total books owned, total active members 
+--(members with at least one loan), total revenue from fines, and average books per member.
+
+
+SELECT
+l.library_name,
+COUNT (b.Book_ID ) AS total_books_owned,
+COUNT(DISTINCT case when lo.loan_id is not null then m.Members_ID end ) AS Total_Active_Members, -- not null mean member is active
+SUM (isnull(p.amount, 0)) AS total_revenue_fines,
+
+-- total_books_owned/Total_Active_Members
+ CAST(COUNT(b.Book_ID) AS FLOAT) / COUNT(DISTINCT CASE WHEN lo.loan_id IS NOT NULL THEN m.Members_ID END) AS average_books_per_member
+FROM library1 l
+LEFT JOIN Book b ON l.library_ID = b.library_ID  
+LEFT JOIN Loan lo ON b.Book_ID = lo.Book_ID  
+LEFT JOIN Members m ON lo.Members_ID = m.Members_ID  
+LEFT JOIN payment p ON lo.Loan_ID = p.Loan_ID 
+group by l.library_name
+
+--11. High-Value Books Analysis 
+--Identify books priced above the average book price in their genre. Show book title, genre, price, genre average price, and difference from average.  
+select * from Book
+
+;WITH BookWithAvg AS (
+    SELECT
+        Book_title,
+        Book_Genre,
+        Book_price,
+        AVG(Book_price) OVER (PARTITION BY Book_Genre) AS genre_average_price -- calculate price for each genre/also i can use avg the group by
+    FROM Book
+)
+SELECT
+    Book_title,
+    Book_Genre,
+    Book_price,
+    genre_average_price,
+    Book_price - genre_average_price AS difference_from_average
+FROM BookWithAvg
+WHERE Book_price > genre_average_price --books priced above the average book price in their genre
+
+--12. Payment Pattern Analysis 
+-- Group payments by payment method and show: payment method, number of transactions, total amount collected, average payment amount, and percentage of total revenue. 
+select * from payment
+select 
+method as payment_method,
+COUNT(*) AS Number_of_Transactions,  -- هذا يحسب عدد المعاملات لكل طريقة دفع
+sum (amount) as total_amount_collected,
+avg (amount) as average_payment_amount,
+CAST(SUM(amount) * 100.0 / SUM(SUM(amount)) OVER () AS FLOAT) AS Percentage_of_Total_Revenue-- SUM(amount) for each method / SUM(SUM(amount)) OVER () for all method togeter
+FROM Payment
+GROUP BY method
+----------------------------------------------------------------------------------------------------------------------
+-- Section 3: Views Creation 
+-- 13. vw_CurrentLoans 
+--A view that shows all currently active loans (status 'Issued' or 'Overdue') with member details, book details, loan information, and calculated days until due (or days overdue).  
+CREATE VIEW vw_CurrentLoans AS
+SELECT
+    L.loan_id,
+    L.Loan_Status,
+    L.Loan_Date,
+    L.Due_Date,
+    M.Members_ID,
+    M.Members_FullName,
+    B.Book_ID,
+    B.Book_Title,
+    B.Book_Genre,
+	    CASE 
+        WHEN L.Loan_Status = 'Issued' THEN DATEDIFF(DAY, GETDATE(), L.Due_Date)    
+        WHEN L.Loan_Status = 'Overdue' THEN DATEDIFF(DAY, L.Due_Date, GETDATE())    
+        ELSE NULL
+    END AS Days_Until_DueOrOverdue
+FROM Loan L
+JOIN Members M ON L.Members_ID = M.Members_ID
+JOIN Book B ON L.Book_ID = B.Book_ID
+WHERE L.Loan_Status IN ('Issued', 'Overdue')
+ 
+ select * from vw_CurrentLoans
+
+ --14. vw_LibraryStatistics 
+--A comprehensive view showing library-level statistics including total books, available books, total members, active loans, total staff, and total revenue from fines.  
+
+
+create view vw_LibraryStatistics AS
+
+WITH BookStats AS (
+    SELECT
+        Library_ID,
+        COUNT(Book_ID) AS total_books,
+        SUM(CASE WHEN Book_IsAvailable = 1 THEN 1 ELSE 0 END) AS available_books
+    FROM Book
+    GROUP BY Library_ID
+),
+LoanStats AS (
+    SELECT
+        b.Library_ID,
+        COUNT(DISTINCT CASE WHEN l.Loan_Status IN ('Issued','Overdue') THEN l.loan_id END) AS active_loans,
+        SUM(ISNULL(p.amount, 0)) AS total_fines
+    FROM Book b
+    LEFT JOIN loan l ON b.Book_ID = l.Book_ID
+    LEFT JOIN payment p ON l.loan_id = p.loan_id
+    GROUP BY b.Library_ID
+)
+SELECT
+    l.library_name AS libraryName,
+    ISNULL(bs.total_books, 0) AS total_books,
+    ISNULL(bs.available_books, 0) AS available_books,
+    COUNT(DISTINCT m.Members_ID) AS total_members,
+    COUNT(DISTINCT s.staff_ID) AS total_staff,
+    ISNULL(ls.active_loans, 0) AS active_loans,
+    ISNULL(ls.total_fines, 0) AS total_fines
+FROM library1 l
+LEFT JOIN BookStats bs ON l.library_ID = bs.Library_ID
+LEFT JOIN Book b ON l.library_ID = b.Library_ID
+LEFT JOIN loan l2 ON b.Book_ID = l2.Book_ID
+LEFT JOIN Members m ON l2.Members_ID = m.Members_ID
+LEFT JOIN Staff s ON l.library_ID = s.Library_ID
+LEFT JOIN LoanStats ls ON l.library_ID = ls.Library_ID
+GROUP BY
+    l.library_name,
+    bs.total_books,
+    bs.available_books,
+    ls.active_loans,
+    ls.total_fines;
+
+	select * from vw_LibraryStatistics
+--  15. vw_BookDetailsWithReviews 
+-- A view combining book information with aggregated review data (average rating, total reviews, latest review date) and current availability status.
+CREATE VIEW vw_BookReviewStats AS
+
+SELECT
+    b.Book_ID,
+    b.Book_ISBN,
+    b.Book_title,
+    b.Book_price,
+    b.Book_Genre,
+    b.Shelf_Location,
+    b.Library_ID,
+    b.Book_IsAvailable,
+    AVG(CAST(r.review_rate AS FLOAT)) AS avg_rating,
+    COUNT(r.review_id) AS total_reviews,
+    MAX(r.review_date) AS latest_review_date
+
+FROM Book b
+LEFT JOIN review r ON b.Book_ID = r.Book_ID
+GROUP BY
+    b.Book_ID,
+    b.Book_ISBN,
+    b.Book_title,
+    b.Book_price,
+    b.Book_Genre,
+    b.Shelf_Location,
+    b.Library_ID,
+    b.Book_IsAvailable
+
+	select * from vw_BookReviewStats
+
+--------------------------------------------------------------------------------
+-- Section 4: Stored Procedures 
+--Q16
+
+CREATE PROCEDURE spp_ssueBook
+    @MemberID INT,
+    @BookID INT,
+    @DueDate DATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @BookAvailable BIT;
+    DECLARE @HasOverdue INT;
+
+    -- Check if book is available 
+    SELECT @BookAvailable = Book_IsAvailable
+    FROM Book
+    WHERE Book_ID = @BookID;
+
+    IF @BookAvailable IS NULL
+    BEGIN
+        PRINT 'Error: Book not found.';
+        RETURN;
+    END
+
+    IF @BookAvailable = 0
+    BEGIN
+        PRINT 'Error: Book is currently not available.';
+        RETURN;
+    END
+
+    -- Check if member has any overdue loans 
+    SELECT @HasOverdue = COUNT(*)
+    FROM loan
+    WHERE Members_ID = @MemberID
+      AND Loan_Status = 'Overdue';
+
+    IF @HasOverdue > 0
+    BEGIN
+        PRINT 'Error: Member has overdue loans. Cannot issue a new book.';
+        RETURN;
+    END
+
+    -- If validations pass, create a new loan record and update book availability 
+    INSERT INTO loan (loan_date, due_date, Loan_Status, Book_ID, Members_ID)
+    VALUES (GETDATE(), @DueDate, 'Issued', @BookID, @MemberID);
+
+    UPDATE Book
+    SET Book_IsAvailable = 0
+    WHERE Book_ID = @BookID;
+
+    PRINT 'Success: Book has been issued successfully.';
+END
+
+EXEC spp_ssueBook 
+    @MemberID = 2, 
+    @BookID = 5, 
+    @DueDate = '2025-12-04'
+
+	select * from loan
