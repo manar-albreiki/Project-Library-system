@@ -104,35 +104,13 @@ WHERE lo.Loan_Status IN ('Issued', 'Overdue')
 
 -- 3. Overdue Loans with Member Details
 -- Retrieve all overdue loans showing member name, phone number, book title, library name, days overdue (calculated as difference between current date and due date), and any fines paid for that loan.
-select
-m.Members_FullName,
-m.Members_PhoneNumber,
-b.Book_title,
-l.library_name,
-DATEDIFF(day, lo.due_date, GETDATE()) AS Days_Overdue,
-isnull(p.amount,0)  as fines
-from loan lo
-join Members m
-on m.Members_ID = lo.Members_ID
-join Book b
-on b.Book_ID = lo.Book_ID
-join library1 l
-on l.library_ID = b.library_ID
-join payment p
-on p.loan_id = lo.loan_id
-where lo.Loan_Status = 'Overdue'
-
-select * from loan
-select * from Members
-select * from payment
-select * from Book
 
 SELECT
     m.Members_FullName,
     m.Members_PhoneNumber,
     b.Book_title,
     l.library_name,
-    DATEDIFF(day, lo.due_date, GETDATE()) AS Days_Overdue,
+    DATEDIFF(day, lo.due_date, GETDATE()) AS Days_Overdue, -- claculate the difference between due date and today
     ISNULL(p.amount, 0) AS Fines
 FROM loan lo
 JOIN Members m ON m.Members_ID = lo.Members_ID
@@ -187,24 +165,7 @@ group by b.Book_title, b.Book_ISBN, b.Book_Genre
 having count (l.loan_id) >=  2 -- i have not more than 3
 
 -- 6. Member Reading History
---Create a query that shows each member's complete borrowing history including:
---member name, book titles borrowed (including currently borrowed and previously
---returned), loan dates, return dates, and any reviews they left for those books.
-select
-m.Members_FullName,
-b.Book_title,
-l.loan_date,
-l.return_date,
-l.Loan_Status,
-r.review_rate,
-r.review_comments
- from loan l 
- join Book b
-on b.Book_ID = l.Book_ID
- left join review r
-on b.Book_ID = r.Book_ID
-join Members m
-on m.Members_ID = l.Members_ID
+--Create a query that shows each member's complete borrowing history including: member name, book titles borrowed (including currently borrowed and previously returned), loan dates, return dates, and any reviews they left for those books.
 
 SELECT
     m.Members_FullName,
@@ -224,13 +185,12 @@ LEFT JOIN review r
    AND r.Members_ID = m.Members_ID --  the join condition ensures the review belongs to the same member and book
 
   -- 7. Revenue Analysis by Genre
--- Calculate total fine payments collected for each book genre. Show genre name, total
--- number of loans for that genre, total fine amount collected, and average fine per loan.
+-- Calculate total fine payments collected for each book genre. Show genre name, total number of loans for that genre, total fine amount collected, and average fine per loan.
 select
 b.Book_Genre,
 count (l.loan_id) as total_genre,
-    SUM(ISNULL(p.amount, 0)) AS Total_Fine,
-    AVG(ISNULL(p.amount, 0.0)) AS Avg_Fine
+    SUM(p.amount) AS Total_Fine,
+    AVG(cast(p.amount as float)) AS Avg_Fine
 from Book b
 join loan l
 ON b.Book_ID = l.Book_ID
@@ -239,16 +199,9 @@ on l.loan_id = p.loan_id
 group by b.Book_Genre
 
 -- Section 2: Aggregate Functions and Grouping
--- 8. Monthly Loan Statistics
--- Generate a report showing the number of loans issued per month for the current year.
---Include month name, total loans, total returned, and total still issued/overdue
-select
-
--- Section 2: Aggregate Functions and Grouping
 
 -- 8. Monthly Loan Statistics
--- Generate a report showing the number of loans issued per month for the current year.
---Include month name, total loans, total returned, and total still issued/overdue
+-- Generate a report showing the number of loans issued per month for the current year. Include month name, total loans, total returned, and total still issued/overdue
 
 SELECT
     DATENAME(month, loan_date) AS Month_Name,
@@ -260,10 +213,7 @@ WHERE YEAR(loan_date) = YEAR(GETDATE()) -- to show the loan in current year
 GROUP BY DATENAME(month, loan_date)
 
 -- 9. Member Engagement Metrics 
---For each member, calculate: total books borrowed, total books currently on loan, total 
---fines paid, and average rating they give in reviews. Only include members who have 
---borrowed at least one book. 
-
+--For each member, calculate: total books borrowed, total books currently on loan, total  fines paid, and average rating they give in reviews. Only include members who have borrowed at least one book. 
 
 SELECT
     m.Members_FullName,
@@ -282,8 +232,7 @@ GROUP BY m.Members_FullName
 HAVING COUNT(l.loan_id) >= 1
 
 --10. Library Performance Comparison 
---Compare libraries by showing: library name, total books owned, total active members 
---(members with at least one loan), total revenue from fines, and average books per member.
+--Compare libraries by showing: library name, total books owned, total active members (members with at least one loan), total revenue from fines, and average books per member.
 
 
 SELECT
@@ -359,6 +308,7 @@ JOIN Book B ON L.Book_ID = B.Book_ID
 WHERE L.Loan_Status IN ('Issued', 'Overdue')
  
  select * from vw_CurrentLoans
+ ---------------------------------------------------
 
  --14. vw_LibraryStatistics 
 --A comprehensive view showing library-level statistics including total books, available books, total members, active loans, total staff, and total revenue from fines.  
@@ -377,7 +327,7 @@ WITH BookStats AS (
 LoanStats AS (
     SELECT
         b.Library_ID,
-        COUNT(DISTINCT CASE WHEN l.Loan_Status IN ('Issued','Overdue') THEN l.loan_id END) AS active_loans,
+        COUNT(DISTINCT CASE WHEN l.Loan_Status IN ('Issued','Overdue') THEN l.loan_id END) AS active_loans, -- DISTINCT take one only (no repate)
         SUM(ISNULL(p.amount, 0)) AS total_fines
     FROM Book b
     LEFT JOIN loan l ON b.Book_ID = l.Book_ID
@@ -407,6 +357,8 @@ GROUP BY
     ls.total_fines;
 
 	select * from vw_LibraryStatistics
+	---------------------------------------------------
+
 --  15. vw_BookDetailsWithReviews 
 -- A view combining book information with aggregated review data (average rating, total reviews, latest review date) and current availability status.
 CREATE VIEW vw_BookReviewStats AS
@@ -440,7 +392,7 @@ GROUP BY
 
 --------------------------------------------------------------------------------
 -- Section 4: Stored Procedures 
---Q16
+--Q16 sp_IssueBook 
 
 CREATE PROCEDURE spp_ssueBook
     @MemberID INT,
@@ -495,7 +447,222 @@ END
 
 EXEC spp_ssueBook 
     @MemberID = 2, 
-    @BookID = 5, 
-    @DueDate = '2025-12-04'
+    @BookID = 2, 
+    @DueDate = '2025-12-03'
 
-	select * from loan
+	
+--Q17 sp_ReturnBook 
+
+create procedure sp_ReturnBook 
+@loanID int,
+@ReturnDate date
+as
+begin
+set nocount on;
+
+    DECLARE @DueDate DATE;
+    DECLARE @BookID INT;
+    DECLARE @OverdueDays INT;
+    DECLARE @FineAmount DECIMAL(8,3);
+
+   -- Get loan details
+  select 
+  @DueDate = due_date,
+  @BookID = Book_ID
+  from loan
+  where loan_id = @LoanID; -- PK
+
+  IF @DueDate IS NULL
+BEGIN
+    PRINT 'Error: Loan not found.';
+    RETURN;
+END
+
+-- Update loan status and return date
+update loan
+set 
+@ReturnDate = return_date,
+Loan_Status = 'Returned'
+ where loan_id = @LoanID; -- PK
+
+ --  Update book availability to TRUE 
+ update Book
+ set 
+ Book_IsAvailable = 'True'
+ where Book_ID = @BookID; --PK
+
+ -- Calculate if there's a fine (e.g., $2 per day overdue) 
+
+    SET @OverdueDays = DATEDIFF(DAY, @DueDate, @ReturnDate);
+
+    IF @OverdueDays > 0
+    BEGIN
+       SET @FineAmount = @OverdueDays * 2;  -- Fine = $2 per overdue day
+
+
+ -- Create payment record with Pending status
+         INSERT INTO payment (payment_date, amount, method, loan_id)
+        VALUES (GETDATE(), @FineAmount, 'Pending', @LoanID);
+    END
+    ELSE
+    BEGIN
+        SET @FineAmount = 0; -- if no fine
+    END
+
+    -- Return total fine amount
+    SELECT @FineAmount AS Total_Fine;
+END
+
+EXEC sp_ReturnBook 
+    @LoanID = 18,
+    @ReturnDate = '2025-12-21';
+
+--Q18
+
+create procedure sp_GetMemberReport
+    @MemberID INT
+	as 
+	begin
+	set nocount on;
+
+	--  Member basic information 
+	select 
+        M.Members_ID,
+        M.Members_FullName,
+        M.Members_email,
+        M.Members_PhoneNumber,
+        M.membership_StartDate
+    FROM Members M
+    WHERE M.Members_ID = @MemberID; -- PK
+
+	--  Current loans (Issued or Overdue)
+	select 
+	    L.loan_ID,
+        L.Book_ID,
+        B.Book_title,
+        L.loan_date,
+        L.due_date,
+        L.Loan_Status
+		from Book B
+		join loan L
+		ON L.Book_ID = B.Book_ID
+		WHERE L.Members_ID = @MemberID -- PK
+		AND L.Loan_Status IN ('Issued', 'Overdue');
+
+ -- Loan history with return status
+ select
+	    L.loan_ID,
+        B.Book_title,
+        L.loan_date,
+        L.due_date,
+        L.return_date,
+        L.Loan_Status
+		from loan L
+		join Book B
+		on L.Book_ID = B.Book_ID
+		where L.Members_ID = @MemberID -- PK
+	
+
+
+-- Total fines paid
+SELECT
+    SUM(P.amount) AS TotalPaidFines
+FROM payment P
+JOIN loan L ON P.loan_ID = L.loan_ID
+WHERE L.Members_ID = @MemberID; -- PK
+
+	--Reviews written by the member 
+	    SELECT
+        R.review_ID,
+        R.Book_ID,
+        B.Book_title,
+        R.review_rate,
+        R.review_date,
+        R.review_comments
+    FROM review R
+    JOIN Book B ON R.Book_ID = B.Book_ID
+    WHERE R.Members_ID = @MemberID;
+
+END
+
+select * from payment
+select * from loan
+select * from review
+select * from Book
+select * from Members
+
+
+
+EXEC sp_GetMemberReport @MemberID = 3;
+
+-- Q19
+create procedure sp_MonthlyLibraryReport
+    @LibraryID int,
+    @Month int,
+    @Year int
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+	-- Total loans issued in that month 
+	select 
+	 count(*) AS TotalLoansIssued
+    FROM loan L
+    JOIN Book B ON L.Book_ID = B.Book_ID --  loan table doesn't know which library has the loan.
+    WHERE B.library_ID = @LibraryID
+      AND MONTH(L.loan_date) = @Month
+      AND YEAR(L.loan_date) = @Year;
+
+-- Total books returned in that month 
+    select
+        count (*) AS TotalBooksReturned
+    FROM loan L
+    JOIN Book B ON L.Book_ID = B.Book_ID
+    WHERE B.library_ID = @LibraryID
+      AND L.return_date IS NOT NULL
+      AND MONTH(L.return_date) = @Month
+      AND YEAR(L.return_date) = @Year;
+
+	--Total revenue collected
+	    select 
+        SUM(P.amount) AS TotalRevenue
+    FROM payment P
+    JOIN loan L ON P.loan_ID = L.loan_ID
+    JOIN Book B ON L.Book_ID = B.Book_ID
+    WHERE B.library_ID = @LibraryID
+      AND MONTH(P.payment_date) = @Month
+      AND YEAR(P.payment_date) = @Year;
+ 
+ -- Most borrowed genre 
+     SELECT TOP 1
+        B.Book_Genre,
+        COUNT(*) AS BorrowCount
+    FROM loan L
+    JOIN Book B ON L.Book_ID = B.Book_ID
+    WHERE B.library_ID = @LibraryID
+      AND MONTH(L.loan_date) = @Month
+      AND YEAR(L.loan_date) = @Year
+    GROUP BY B.Book_Genre
+    ORDER BY COUNT(*) DESC;
+
+	-- Top 3 most active members (by number of loans) 
+	    SELECT TOP 3
+        M.Members_ID,
+        M.Members_FullName,
+        COUNT(*) AS TotalLoans
+    FROM loan L
+    JOIN Members M ON L.Members_ID = M.Members_ID
+    JOIN Book B ON L.Book_ID = B.Book_ID
+    WHERE B.library_ID = @LibraryID
+      AND MONTH(L.loan_date) = @Month
+      AND YEAR(L.loan_date) = @Year
+    GROUP BY M.Members_ID, M.Members_FullName
+    ORDER BY COUNT(*) DESC;
+
+END;
+
+
+EXEC sp_MonthlyLibraryReport 
+    @LibraryID = 1,
+    @Month = 12,
+    @Year = 2025;
